@@ -1,0 +1,36 @@
+name: Repair Pod startup order without re-downloading model layers
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Publish boot-first OCI configuration
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz \
+            --output "$RUNNER_TEMP/crane.tar.gz"
+          printf '%s  %s\n' '0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0' "$RUNNER_TEMP/crane.tar.gz" | sha256sum --check -
+          tar -xzOf "$RUNNER_TEMP/crane.tar.gz" crane > "$RUNNER_TEMP/crane"
+          chmod 755 "$RUNNER_TEMP/crane"
+          printf '%s' "$GITHUB_TOKEN" | "$RUNNER_TEMP/crane" auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          SOURCE='ghcr.io/shea786/wan-fun-control@sha256:b199d4d080ef1b22b90d0ed709e90da861cbdfbae522f6e5e5fc19f66a25ee82'
+          TARGET='ghcr.io/shea786/wan-fun-control:boot-first-v2'
+          "$RUNNER_TEMP/crane" mutate "$SOURCE" --entrypoint=/start.sh --tag "$TARGET"
+          "$RUNNER_TEMP/crane" config "$TARGET" > "$RUNNER_TEMP/config.json"
+          "$RUNNER_TEMP/crane" manifest "$TARGET" > "$RUNNER_TEMP/manifest.json"
+          python3 - "$RUNNER_TEMP" <<'PY'
+          import json, pathlib, sys
+          p=pathlib.Path(sys.argv[1]); c=json.loads((p/'config.json').read_text()); m=json.loads((p/'manifest.json').read_text())
+          assert c['config']['Entrypoint']==['/start.sh']
+          assert len(m['layers'])==37
+          print('BOOT_FIRST_IMAGE', 'ghcr.io/shea786/wan-fun-control@'+__import__('subprocess').check_output([str(p/'crane'),'digest','ghcr.io/shea786/wan-fun-control:boot-first-v2'],text=True).strip())
+          PY
