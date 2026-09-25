@@ -19,7 +19,7 @@ jobs:
             --header 'Accept: application/vnd.github+json' \
             --header 'X-GitHub-Api-Version: 2022-11-28' \
             --data '{"visibility":"public"}' \
-            https://api.github.com/users/shea786/packages/container/wan-fun-control \
+            https://api.github.com/user/packages/container/wan-fun-control \
             --output "$RUNNER_TEMP/visibility.json"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("visibility",d.get("visibility")); assert d.get("visibility")=="public"' "$RUNNER_TEMP/visibility.json"
       - name: Confirm anonymous image metadata access
