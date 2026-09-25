@@ -1,0 +1,26 @@
+name: Make verified model-only image public
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Set package visibility
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --request PATCH \
+            --header "Authorization: Bearer ${GITHUB_TOKEN}" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --data '{"visibility":"public"}' \
+            https://api.github.com/users/shea786/packages/container/wan-fun-control \
+            --output "$RUNNER_TEMP/visibility.json"
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("visibility",d.get("visibility")); assert d.get("visibility")=="public"' "$RUNNER_TEMP/visibility.json"
+      - name: Confirm anonymous image metadata access
+        run: docker manifest inspect ghcr.io/shea786/wan-fun-control:v1 > "$RUNNER_TEMP/public-manifest.json"
