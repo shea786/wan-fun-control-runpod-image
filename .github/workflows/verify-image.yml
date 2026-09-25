@@ -1,0 +1,42 @@
+name: Verify published OCI manifest
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Inspect private model image without downloading weights
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz \
+            --output "$RUNNER_TEMP/crane.tar.gz"
+          printf '%s  %s\n' '0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0' "$RUNNER_TEMP/crane.tar.gz" | sha256sum --check -
+          tar -xzOf "$RUNNER_TEMP/crane.tar.gz" crane > "$RUNNER_TEMP/crane"
+          chmod 755 "$RUNNER_TEMP/crane"
+          printf '%s' "$GITHUB_TOKEN" | "$RUNNER_TEMP/crane" auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          IMAGE='ghcr.io/shea786/wan-fun-control:v1'
+          "$RUNNER_TEMP/crane" manifest "$IMAGE" > "$RUNNER_TEMP/manifest.json"
+          "$RUNNER_TEMP/crane" config "$IMAGE" > "$RUNNER_TEMP/config.json"
+          "$RUNNER_TEMP/crane" digest "$IMAGE" > "$RUNNER_TEMP/digest.txt"
+          python3 - "$RUNNER_TEMP" <<'PY'
+          import json, pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          m = json.loads((p/'manifest.json').read_text())
+          c = json.loads((p/'config.json').read_text())
+          digest = (p/'digest.txt').read_text().strip()
+          assert digest == 'sha256:b199d4d080ef1b22b90d0ed709e90da861cbdfbae522f6e5e5fc19f66a25ee82'
+          assert len(m['layers']) == 37
+          assert c['config']['Entrypoint'] == ['/opt/wan-image/image_entrypoint.sh']
+          assert c['architecture'] == 'amd64' and c['os'] == 'linux'
+          print('VERIFIED_IMAGE', 'ghcr.io/shea786/wan-fun-control@' + digest)
+          print('COMPRESSED_BYTES', sum(x['size'] for x in m['layers']))
+          print('LAYER_COUNT', len(m['layers']))
+          PY
