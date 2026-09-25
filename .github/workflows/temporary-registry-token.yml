@@ -1,0 +1,40 @@
+name: Temporary encrypted registry credential for one RunPod pull
+on:
+  workflow_dispatch:
+    inputs:
+      public_key_b64:
+        description: Ephemeral controller RSA public key in base64, never private key
+        required: true
+        type: string
+permissions:
+  contents: read
+  packages: read
+jobs:
+  issue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    steps:
+      - name: Encrypt short-lived workflow token to controller key
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLIC_KEY_B64: ${{ inputs.public_key_b64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$PUBLIC_KEY_B64" | base64 --decode > "$RUNNER_TEMP/controller.pub.pem"
+          printf '%s' "$GITHUB_TOKEN" > "$RUNNER_TEMP/token.txt"
+          openssl pkeyutl -encrypt -pubin -inkey "$RUNNER_TEMP/controller.pub.pem" \
+            -in "$RUNNER_TEMP/token.txt" -out "$RUNNER_TEMP/registry-token.enc" \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          rm -f "$RUNNER_TEMP/token.txt"
+          test -s "$RUNNER_TEMP/registry-token.enc"
+      - name: Upload ciphertext only
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-registry-token
+          path: ${{ runner.temp }}/registry-token.enc
+          retention-days: 1
+          if-no-files-found: error
+      - name: Keep short-lived token active until controller completes Pod pull
+        run: sleep 5400
