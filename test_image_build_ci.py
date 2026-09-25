@@ -7,10 +7,13 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from image_build_ci import BASE_PATHS, build, make_layer
+from image_build_ci import BASE_PATHS, build, make_layer, run
 
 
 class ImageBuildTests(unittest.TestCase):
+    def test_capture_returns_text(self):
+        self.assertEqual(run('python3', '-c', "print('sha256:abc')", capture=True), 'sha256:abc')
+
     def test_layer_paths_and_executable_entrypoint(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

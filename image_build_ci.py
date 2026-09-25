@@ -21,7 +21,7 @@ BASE_PATHS = {'image_weights.py': 'opt/wan-image/image_weights.py',
 
 
 def run(*args, input_text=None, capture=False):
-    result = subprocess.run(args, input=input_text, text=input_text is not None,
+    result = subprocess.run(args, input=input_text, text=True,
                             check=True, stdout=subprocess.PIPE if capture else None)
     return result.stdout.strip() if capture else None
 
