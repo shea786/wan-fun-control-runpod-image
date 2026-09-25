@@ -1,0 +1,31 @@
+name: Smoke OCI registry operations
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Install OCI CLI and exercise registry operations
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz \
+            --output "$RUNNER_TEMP/crane.tar.gz"
+          printf '%s  %s\n' '0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0' "$RUNNER_TEMP/crane.tar.gz" | sha256sum --check -
+          tar -xzOf "$RUNNER_TEMP/crane.tar.gz" crane > "$RUNNER_TEMP/crane"
+          chmod 755 "$RUNNER_TEMP/crane"
+          printf '%s' "$GITHUB_TOKEN" | "$RUNNER_TEMP/crane" auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          "${RUNNER_TEMP}/crane" copy alpine:3.20 "ghcr.io/shea786/wan-fun-control:smoke"
+          mkdir -p "$RUNNER_TEMP/tarroot/opt/wan-image"
+          printf 'test\n' > "$RUNNER_TEMP/tarroot/opt/wan-image/smoke.txt"
+          tar -C "$RUNNER_TEMP/tarroot" -cf "$RUNNER_TEMP/layer.tar" opt/wan-image/smoke.txt
+          "${RUNNER_TEMP}/crane" append --base ghcr.io/shea786/wan-fun-control:smoke --new_layer "$RUNNER_TEMP/layer.tar" --new_tag ghcr.io/shea786/wan-fun-control:smoke
+          "${RUNNER_TEMP}/crane" mutate ghcr.io/shea786/wan-fun-control:smoke --entrypoint=/bin/sh --tag ghcr.io/shea786/wan-fun-control:smoke-verified
+          "${RUNNER_TEMP}/crane" config ghcr.io/shea786/wan-fun-control:smoke-verified | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["config"]["Entrypoint"]==["/bin/sh"]; print("entrypoint verified")'
