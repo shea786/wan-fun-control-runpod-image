@@ -1,0 +1,32 @@
+name: Build pinned Wan Fun Control image
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: wan-fun-control-image
+  cancel-in-progress: false
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check model-only build context
+        run: python3 -m unittest -v test_image_build_ci.py test_image_weights.py
+      - name: Install verified OCI CLI
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz \
+            --output "$RUNNER_TEMP/crane.tar.gz"
+          printf '%s  %s\n' '0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0' "$RUNNER_TEMP/crane.tar.gz" | sha256sum --check -
+          tar -xzOf "$RUNNER_TEMP/crane.tar.gz" crane > "$RUNNER_TEMP/crane"
+          chmod 755 "$RUNNER_TEMP/crane"
+          printf '%s\n' "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Build and verify OCI image remotely
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 image_build_ci.py --reference "ghcr.io/shea786/wan-fun-control:build-${GITHUB_SHA:0:12}"
